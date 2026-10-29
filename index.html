@@ -4,18 +4,21 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8">
-  <title>크롬 북마크 정리기</title>
+  <title>크롬 북마크 정리기 & 백업</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f0f2f5; height: 100vh; display: flex; flex-direction: column; }
-    header { background: #fff; padding: 12px 20px; border-bottom: 1px solid #ddd; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-    .header-left { display: flex; align-items: center; gap: 12px; }
-    .btn { padding: 8px 14px; border: none; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; transition: 0.2s; }
+    header { background: #fff; padding: 12px 20px; border-bottom: 1px solid #ddd; display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+    .header-left { display: flex; align-items: center; gap: 10px; }
+    .header-right { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .btn { padding: 7px 12px; border: none; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; transition: 0.2s; }
     .btn-primary { background: #1a73e8; color: white; }
     .btn-primary:hover { background: #1557b0; }
     .btn-success { background: #188038; color: white; }
     .btn-success:hover { background: #13652c; }
+    .btn-warning { background: #e37400; color: white; }
+    .btn-warning:hover { background: #b05a00; }
     .btn-secondary { background: #e8eaed; color: #3c4043; }
     .btn-secondary:hover { background: #dadce0; }
     .file-input { display: none; }
@@ -45,15 +48,17 @@
 
   <header>
     <div class="header-left">
-      <h2 style="font-size: 16px;">🔖 북마크 매니저</h2>
+      <h2 style="font-size: 15px;">🔖 북마크 매니저</h2>
       <label class="btn btn-primary">
         📂 크롬 북마크 파일 열기
         <input type="file" id="htmlFile" class="file-input" accept=".html">
       </label>
+      <button class="btn btn-secondary" onclick="exportHTML('A')">💾 [A창] 원본 백업 받기</button>
     </div>
-    <div style="display: flex; gap: 8px;">
-      <button class="btn btn-secondary" onclick="addFolder()">📁 [B창] 새 폴더 추가</button>
-      <button class="btn btn-success" onclick="saveToGoogleSheets()">💾 구글 시트로 저장</button>
+    <div class="header-right">
+      <button class="btn btn-secondary" onclick="addFolder()">📁 [B창] 새 폴더</button>
+      <button class="btn btn-warning" onclick="exportHTML('B')">📥 [B창] 크롬용 파일 다운로드</button>
+      <button class="btn btn-success" onclick="saveToGoogleSheets()">☁️ 구글 시트로 저장</button>
     </div>
   </header>
 
@@ -103,7 +108,7 @@
       reader.readAsText(file);
     });
 
-    // 크롬 북마크 HTML 파싱 로직
+    // 크롬 북마크 파싱
     function parseChromeBookmarks(htmlText) {
       const doc = new DOMParser().parseFromString(htmlText, 'text/html');
       function walk(node) {
@@ -137,12 +142,9 @@
       return root ? walk(root) : [];
     }
 
-    // 트리 UI 렌더링
     function renderTree(items, container) {
       container.innerHTML = '';
-      items.forEach(item => {
-        container.appendChild(createItemElement(item));
-      });
+      items.forEach(item => container.appendChild(createItemElement(item)));
     }
 
     function createItemElement(item) {
@@ -209,7 +211,6 @@
       return li;
     }
 
-    // B창에 새 폴더 생성
     function addFolder() {
       const folderName = prompt('새 폴더 이름을 입력하세요:', '새 폴더');
       if (!folderName) return;
@@ -223,7 +224,6 @@
       updateCounts();
     }
 
-    // SortableJS 초기화
     function initSortable() {
       document.querySelectorAll('.tree-list').forEach(list => {
         if (!list.dataset.sortableInit) {
@@ -245,7 +245,6 @@
       document.getElementById('countB').innerText = `${document.querySelectorAll('#treeB .tree-item').length}개 항목`;
     }
 
-    // B창의 트리 구조를 JSON 배열로 추출
     function serializeTree(container) {
       const items = [];
       for (let li of container.children) {
@@ -264,10 +263,52 @@
       return items;
     }
 
-    // 구글 시트로 저장
+    // ⭐️ 크롬 표준 HTML 북마크 파일 생성 및 다운로드 (백업 기능)
+    function exportHTML(panel) {
+      const targetId = panel === 'A' ? 'treeA' : 'treeB';
+      const data = serializeTree(document.getElementById(targetId));
+      if (data.length === 0) {
+        alert(`${panel}창에 내보낼 북마크가 없습니다.`);
+        return;
+      }
+
+      function buildDL(items) {
+        let html = '<DL><p>\n';
+        for (let item of items) {
+          if (item.type === 'folder') {
+            html += `    <DT><H3>${escapeHtml(item.title)}</H3>\n`;
+            if (item.children && item.children.length > 0) {
+              html += buildDL(item.children);
+            } else {
+              html += '    <DL><p></DL><p>\n';
+            }
+          } else {
+            html += `    <DT><A HREF="${escapeHtml(item.url)}">${escapeHtml(item.title)}</A>\n`;
+          }
+        }
+        html += '</DL><p>\n';
+        return html;
+      }
+
+      const fullHTML = `<!DOCTYPE NETSCAPE-Bookmark-file-1>
+<META HTTP-EQUIV="Content-Type" CONTENT="text/html; charset=UTF-8">
+<TITLE>Bookmarks</TITLE>
+<H1>Bookmarks</H1>
+${buildDL(data)}`;
+
+      const blob = new Blob([fullHTML], { type: 'text/html;charset=utf-8' });
+      const a = document.createElement('a');
+      const filename = panel === 'A' ? 'original_bookmarks_backup.html' : 'cleaned_bookmarks.html';
+      a.href = URL.createObjectURL(blob);
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    }
+
+    // 구글 시트 저장
     function saveToGoogleSheets() {
-      if (GOOGLE_SCRIPT_URL === "여기에_배포한_웹앱_URL을_붙여넣으세요") {
-        alert("index.html 파일 상단의 GOOGLE_SCRIPT_URL에 Apps Script 웹 앱 주소를 먼저 넣어주세요!");
+      if (GOOGLE_SCRIPT_URL.includes("여기에_배포한")) {
+        alert("GOOGLE_SCRIPT_URL에 Apps Script 배포 주소를 먼저 넣어주세요!");
         return;
       }
       const data = serializeTree(document.getElementById('treeB'));
@@ -276,7 +317,7 @@
         return;
       }
 
-      if (!confirm(`B창의 내용(${document.querySelectorAll('#treeB .tree-item').length}개 항목)을 구글 시트에 저장하시겠습니까?`)) return;
+      if (!confirm(`B창의 항목들을 구글 시트에 저장하시겠습니까?`)) return;
 
       fetch(GOOGLE_SCRIPT_URL, {
         method: 'POST',
@@ -286,12 +327,12 @@
       .then(res => res.json())
       .then(res => {
         if (res.status === 'success') {
-          alert('구글 시트에 성공적으로 저장되었습니다!');
+          alert('구글 시트에 성공적으로 백업/저장되었습니다!');
         } else {
           alert('저장 실패: ' + res.message);
         }
       })
-      .catch(err => alert('오류가 발생했습니다: ' + err));
+      .catch(err => alert('오류 발생: ' + err));
     }
 
     function getDomain(url) {
