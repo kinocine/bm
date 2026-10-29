@@ -1,5 +1,3 @@
-
-
 <!DOCTYPE html>
 <html lang="ko">
 <head>
@@ -171,7 +169,25 @@
       const actions = document.createElement('div');
       actions.className = 'item-actions';
 
+      // 폴더 전용 버튼: [접기/펼치기], [수정]
       if (item.type === 'folder') {
+        const toggleBtn = document.createElement('button');
+        toggleBtn.textContent = '접기';
+        toggleBtn.onclick = (e) => {
+          e.stopPropagation();
+          const subUl = li.querySelector(':scope > .sub-tree');
+          if (!subUl) return;
+          
+          if (subUl.style.display === 'none') {
+            subUl.style.display = '';
+            toggleBtn.textContent = '접기';
+          } else {
+            subUl.style.display = 'none';
+            toggleBtn.textContent = '펼치기';
+          }
+        };
+        actions.appendChild(toggleBtn);
+
         const editBtn = document.createElement('button');
         editBtn.textContent = '수정';
         editBtn.onclick = (e) => {
@@ -186,6 +202,7 @@
         actions.appendChild(editBtn);
       }
 
+      // 공통 버튼: [삭제]
       const delBtn = document.createElement('button');
       delBtn.textContent = '삭제';
       delBtn.onclick = (e) => {
@@ -263,7 +280,7 @@
       return items;
     }
 
-    // ⭐️ 크롬 표준 HTML 북마크 파일 생성 및 다운로드 (백업 기능)
+    // 크롬 표준 HTML 북마크 파일 생성 및 다운로드
     function exportHTML(panel) {
       const targetId = panel === 'A' ? 'treeA' : 'treeB';
       const data = serializeTree(document.getElementById(targetId));
@@ -345,3 +362,6 @@ ${buildDL(data)}`;
   </script>
 </body>
 </html>
+```<FollowUp>
+- [B창] 전체 폴더를 한 번에 접거나 펼칠 수 있는 **'모두 접기 / 모두 펼치기'** 버튼도 상단 헤더에 함께 추가해 드릴까요?
+</FollowUp>
