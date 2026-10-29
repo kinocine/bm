@@ -1,0 +1,306 @@
+
+
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>크롬 북마크 정리기</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f0f2f5; height: 100vh; display: flex; flex-direction: column; }
+    header { background: #fff; padding: 12px 20px; border-bottom: 1px solid #ddd; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+    .header-left { display: flex; align-items: center; gap: 12px; }
+    .btn { padding: 8px 14px; border: none; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; transition: 0.2s; }
+    .btn-primary { background: #1a73e8; color: white; }
+    .btn-primary:hover { background: #1557b0; }
+    .btn-success { background: #188038; color: white; }
+    .btn-success:hover { background: #13652c; }
+    .btn-secondary { background: #e8eaed; color: #3c4043; }
+    .btn-secondary:hover { background: #dadce0; }
+    .file-input { display: none; }
+    
+    .container { flex: 1; display: flex; padding: 15px; gap: 15px; overflow: hidden; }
+    .panel { flex: 1; background: white; border-radius: 8px; border: 1px solid #dadce0; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+    .panel-header { padding: 12px 16px; background: #fafafa; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; font-weight: bold; }
+    .panel-body { flex: 1; padding: 12px; overflow-y: auto; }
+    
+    .tree-list { min-height: 40px; list-style: none; }
+    .tree-item { margin: 4px 0; padding: 6px 10px; background: #fff; border: 1px solid #e0e0e0; border-radius: 4px; display: flex; flex-direction: column; cursor: grab; }
+    .tree-item.folder { background: #f8f9fa; border-left: 4px solid #1a73e8; }
+    .tree-item.link { border-left: 4px solid #34a853; }
+    .item-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .item-title { display: flex; align-items: center; gap: 6px; font-size: 13px; word-break: break-all; flex: 1; }
+    .item-title a { color: #1a73e8; text-decoration: none; }
+    .item-title a:hover { text-decoration: underline; }
+    .item-actions { display: flex; gap: 4px; }
+    .item-actions button { background: none; border: none; cursor: pointer; color: #70757a; font-size: 11px; padding: 2px 4px; border-radius: 3px; }
+    .item-actions button:hover { background: #eee; color: #d93025; }
+    .sub-tree { margin-left: 18px; margin-top: 6px; padding-left: 8px; border-left: 1px dashed #ccc; min-height: 20px; list-style: none; }
+    .empty-msg { text-align: center; color: #9aa0a6; margin-top: 40px; font-size: 14px; }
+    .favicon { width: 16px; height: 16px; vertical-align: middle; }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="header-left">
+      <h2 style="font-size: 16px;">🔖 북마크 매니저</h2>
+      <label class="btn btn-primary">
+        📂 크롬 북마크 파일 열기
+        <input type="file" id="htmlFile" class="file-input" accept=".html">
+      </label>
+    </div>
+    <div style="display: flex; gap: 8px;">
+      <button class="btn btn-secondary" onclick="addFolder()">📁 [B창] 새 폴더 추가</button>
+      <button class="btn btn-success" onclick="saveToGoogleSheets()">💾 구글 시트로 저장</button>
+    </div>
+  </header>
+
+  <div class="container">
+    <!-- 왼쪽: 기존 북마크 풀 (A창) -->
+    <div class="panel">
+      <div class="panel-header">
+        <span>[A창] 원본 북마크 풀</span>
+        <span id="countA" style="font-size: 12px; color: #70757a;">0개 항목</span>
+      </div>
+      <div class="panel-body">
+        <ul id="treeA" class="tree-list">
+          <div class="empty-msg">크롬에서 내보낸 북마크(.html) 파일을 열어주세요.</div>
+        </ul>
+      </div>
+    </div>
+
+    <!-- 오른쪽: 신규 정리 영역 (B창) -->
+    <div class="panel">
+      <div class="panel-header">
+        <span>[B창] 새로 정리할 트리</span>
+        <span id="countB" style="font-size: 12px; color: #70757a;">0개 항목</span>
+      </div>
+      <div class="panel-body">
+        <ul id="treeB" class="tree-list">
+          <div class="empty-msg">A창에서 북마크를 이쪽으로 끌어다 놓으세요.</div>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ⭐️ 여기에 Apps Script에서 배포한 '웹 앱 URL'을 넣어주세요!
+    const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwwtr3hhBy1hvjobGV8-JRjyrlhhIHRLLPSljf-2YsP67GvTwzPffM2Hi-bmQjaW58GNw/exec";
+
+    document.getElementById('htmlFile').addEventListener('change', function(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = function(evt) {
+        const parsed = parseChromeBookmarks(evt.target.result);
+        renderTree(parsed, document.getElementById('treeA'));
+        initSortable();
+        updateCounts();
+      };
+      reader.readAsText(file);
+    });
+
+    // 크롬 북마크 HTML 파싱 로직
+    function parseChromeBookmarks(htmlText) {
+      const doc = new DOMParser().parseFromString(htmlText, 'text/html');
+      function walk(node) {
+        const items = [];
+        for (let el of node.children) {
+          if (el.tagName === 'DT') {
+            const h3 = el.querySelector(':scope > H3');
+            const a = el.querySelector(':scope > A');
+            const dl = el.querySelector(':scope > DL');
+
+            if (h3 && dl) {
+              items.push({
+                type: 'folder',
+                title: h3.textContent.trim(),
+                children: walk(dl)
+              });
+            } else if (a) {
+              items.push({
+                type: 'link',
+                title: a.textContent.trim(),
+                url: a.getAttribute('HREF')
+              });
+            }
+          } else if (el.tagName === 'DL') {
+            return walk(el);
+          }
+        }
+        return items;
+      }
+      const root = doc.querySelector('DL');
+      return root ? walk(root) : [];
+    }
+
+    // 트리 UI 렌더링
+    function renderTree(items, container) {
+      container.innerHTML = '';
+      items.forEach(item => {
+        container.appendChild(createItemElement(item));
+      });
+    }
+
+    function createItemElement(item) {
+      const li = document.createElement('li');
+      li.className = `tree-item ${item.type}`;
+      li.dataset.type = item.type;
+      if (item.url) li.dataset.url = item.url;
+      li.dataset.title = item.title;
+
+      const header = document.createElement('div');
+      header.className = 'item-header';
+
+      const titleSpan = document.createElement('span');
+      titleSpan.className = 'item-title';
+
+      if (item.type === 'folder') {
+        titleSpan.innerHTML = `📁 <b>${escapeHtml(item.title)}</b>`;
+      } else {
+        const domain = getDomain(item.url);
+        const icon = domain ? `<img class="favicon" src="https://www.google.com/s2/favicons?domain=${domain}">` : '🔗';
+        titleSpan.innerHTML = `${icon} <a href="${escapeHtml(item.url)}" target="_blank">${escapeHtml(item.title)}</a>`;
+      }
+
+      const actions = document.createElement('div');
+      actions.className = 'item-actions';
+
+      if (item.type === 'folder') {
+        const editBtn = document.createElement('button');
+        editBtn.textContent = '수정';
+        editBtn.onclick = (e) => {
+          e.stopPropagation();
+          const newName = prompt('폴더명 변경:', item.title);
+          if (newName) {
+            item.title = newName;
+            li.dataset.title = newName;
+            titleSpan.innerHTML = `📁 <b>${escapeHtml(newName)}</b>`;
+          }
+        };
+        actions.appendChild(editBtn);
+      }
+
+      const delBtn = document.createElement('button');
+      delBtn.textContent = '삭제';
+      delBtn.onclick = (e) => {
+        e.stopPropagation();
+        li.remove();
+        updateCounts();
+      };
+      actions.appendChild(delBtn);
+
+      header.appendChild(titleSpan);
+      header.appendChild(actions);
+      li.appendChild(header);
+
+      if (item.type === 'folder') {
+        const subUl = document.createElement('ul');
+        subUl.className = 'sub-tree tree-list';
+        if (item.children && item.children.length > 0) {
+          item.children.forEach(child => subUl.appendChild(createItemElement(child)));
+        }
+        li.appendChild(subUl);
+      }
+
+      return li;
+    }
+
+    // B창에 새 폴더 생성
+    function addFolder() {
+      const folderName = prompt('새 폴더 이름을 입력하세요:', '새 폴더');
+      if (!folderName) return;
+      const bContainer = document.getElementById('treeB');
+      const empty = bContainer.querySelector('.empty-msg');
+      if (empty) empty.remove();
+
+      const el = createItemElement({ type: 'folder', title: folderName, children: [] });
+      bContainer.appendChild(el);
+      initSortable();
+      updateCounts();
+    }
+
+    // SortableJS 초기화
+    function initSortable() {
+      document.querySelectorAll('.tree-list').forEach(list => {
+        if (!list.dataset.sortableInit) {
+          new Sortable(list, {
+            group: 'nested',
+            animation: 150,
+            fallbackOnBody: true,
+            swapThreshold: 0.65,
+            emptyInsertThreshold: 10,
+            onEnd: () => updateCounts()
+          });
+          list.dataset.sortableInit = 'true';
+        }
+      });
+    }
+
+    function updateCounts() {
+      document.getElementById('countA').innerText = `${document.querySelectorAll('#treeA .tree-item').length}개 항목`;
+      document.getElementById('countB').innerText = `${document.querySelectorAll('#treeB .tree-item').length}개 항목`;
+    }
+
+    // B창의 트리 구조를 JSON 배열로 추출
+    function serializeTree(container) {
+      const items = [];
+      for (let li of container.children) {
+        if (!li.classList.contains('tree-item')) continue;
+        const type = li.dataset.type;
+        const title = li.dataset.title;
+        const url = li.dataset.url || '';
+
+        const item = { type, title, url };
+        if (type === 'folder') {
+          const subUl = li.querySelector(':scope > .sub-tree');
+          item.children = subUl ? serializeTree(subUl) : [];
+        }
+        items.push(item);
+      }
+      return items;
+    }
+
+    // 구글 시트로 저장
+    function saveToGoogleSheets() {
+      if (GOOGLE_SCRIPT_URL === "여기에_배포한_웹앱_URL을_붙여넣으세요") {
+        alert("index.html 파일 상단의 GOOGLE_SCRIPT_URL에 Apps Script 웹 앱 주소를 먼저 넣어주세요!");
+        return;
+      }
+      const data = serializeTree(document.getElementById('treeB'));
+      if (data.length === 0) {
+        alert("B창에 저장할 북마크가 없습니다.");
+        return;
+      }
+
+      if (!confirm(`B창의 내용(${document.querySelectorAll('#treeB .tree-item').length}개 항목)을 구글 시트에 저장하시겠습니까?`)) return;
+
+      fetch(GOOGLE_SCRIPT_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify(data)
+      })
+      .then(res => res.json())
+      .then(res => {
+        if (res.status === 'success') {
+          alert('구글 시트에 성공적으로 저장되었습니다!');
+        } else {
+          alert('저장 실패: ' + res.message);
+        }
+      })
+      .catch(err => alert('오류가 발생했습니다: ' + err));
+    }
+
+    function getDomain(url) {
+      try { return new URL(url).hostname; } catch(e) { return ''; }
+    }
+    function escapeHtml(str) {
+      if (!str) return '';
+      return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    }
+  </script>
+</body>
+</html>
